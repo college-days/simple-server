@@ -53,15 +53,29 @@ class Tube
       self.send_response env
     end
 
+    REASONS = {
+      200 => "OK",
+      404 => "Not found"
+    }
+    
     def send_response(env)
       status, headers, body = @app.call(env)
+      reason = REASONS[status]
       
-      @socket.write "HTTP/1.1 200 OK \r\n"
+      @socket.write "HTTP/1.1 #{status} #{reason}\r\n"
+      headers.each_pair do |key, value|
+        @socket.write "#{key}: #{value}\r\n"
+      end
       @socket.write "\r\n"
-      # just follow the ruby code style guide and the #@ beside problem we use #<whitespace> to comment a single line
-      # or just this also works fine
-      # @socket.write "HTTP/1.1 200 OK \n"
-      @socket.write "hello\n"
+      body.each do |chunck|
+        @socket.write chunck
+      end
+      if body.respond_to? :close
+        puts "body respond to close method"
+        body.close
+      else
+        puts "body can not respond to close method"
+      end
       self.close
     end
 
