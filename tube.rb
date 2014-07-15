@@ -84,23 +84,24 @@ class Tube
     end
   end
 
-end
-
-class App
-  def call(env)
-    message = "Hello from the tube. \n"
-    [
-      200,
-      {
-        'Content-Type' => 'text/plain',
-        'Content-Length' => message.size.to_s
-      },
-      [message]
-    ]
+  class Builder
+    attr_reader :app
+    def run(app)
+      @app = app
+    end
+    
+    # static method
+    def self.parse_file(file)
+      content = File.read(file)
+      builder = self.new
+      # 将config.ru中得内容读入，并且有最后一句就是run App.new实际就是执行了自己的run方法，把App.new当做参数传入
+      builder.instance_eval(content)
+      builder.app
+    end
   end
 end
 
-app = App.new
+app = Tube::Builder.parse_file("./config.ru")
 server = Tube.new(3000, app)
 puts "Plugging tube into port 3000"
 server.start
