@@ -2,18 +2,37 @@
 require "socket"
 require "http/parser"
 require "stringio"
+require "thread"
 
 class Tube
   def initialize(port, app)
     @server = TCPServer.new(port)
     @app = app
   end
+
+  # 这个更狠，直接是进程级别的并发了
+  def prefork(workernum)
+    workernum.times do 
+      fork do
+        puts "Forkd #{Process.pid}"
+        # 这个start函数就是Tube中的start函数，因为fork创建的子进程拥有一份父进程完整的拷贝
+        start
+        #exit
+      end
+    end
+    # waitall会阻塞直到所有子进程都退出，只有所有子进程都调用exit退出了，才会让waitall正常返回结束，才会执行后续的打印函数
+    Process.waitall
+    puts "done"
+  end
   
   def start
     loop do
       socket = @server.accept
-      connection = Connection.new(socket, @app)
-      connection.process
+      # supprot for concurrent feature
+      Thread.new do 
+        connection = Connection.new(socket, @app)
+        connection.process
+      end
     end  
   end
 
@@ -104,4 +123,5 @@ end
 app = Tube::Builder.parse_file("./config.ru")
 server = Tube.new(3000, app)
 puts "Plugging tube into port 3000"
-server.start
+# server.start
+server.prefork 3
