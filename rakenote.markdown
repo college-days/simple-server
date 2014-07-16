@@ -1,6 +1,6 @@
 ## rake is a bridge between rails sinatra and webrick thin
 
-```
+```ruby
 class MyApp
 	def call(env)
     	#env is the request info hash
