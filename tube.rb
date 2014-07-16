@@ -3,11 +3,18 @@ require "socket"
 require "http/parser"
 require "stringio"
 require "thread"
+require "eventmachine"
+
+# REASONS = {
+#   200 => "OK",
+#   404 => "Not found"
+# }
 
 class Tube
   def initialize(port, app)
     @server = TCPServer.new(port)
     @app = app
+    @port = port
   end
 
   # 这个更狠，直接是进程级别的并发了
@@ -34,6 +41,14 @@ class Tube
         connection.process
       end
     end  
+  end
+
+  def start_eventmachine
+    EM.run do
+      EM.start_server "localhost", @port, EMConnection do |connection|
+        connection.app = @app
+      end
+    end
   end
 
   class Connection
@@ -103,6 +118,62 @@ class Tube
     end
   end
 
+  # EM is just an alias of EventMachine
+  class EMConnection < EM::Connection
+    attr_accessor :app
+    
+    def post_init
+      @parser = Http::Parser.new(self)
+    end
+
+    def receive_data(data)
+      @parser << data
+    end
+
+    def on_message_complete
+      puts "#{@parser.http_method}, #{@parser.request_url}"
+      puts "  " + @parser.headers.inspect
+      puts
+
+      env = {}
+      @parser.headers.each_pair do |key, value|
+        name = "HTTP_" + key.upcase.tr("-", "_")
+        env[name] = value
+      end
+      env["PATH_INFO"] = @parser.request_url
+      env["REQUEST_METHOD"] = @parser.http_method
+      env["rake.input"] = StringIO.new
+      
+      self.send_response env
+    end
+
+    REASONS = {
+      200 => "OK",
+      404 => "Not found"
+    }
+    
+    def send_response(env)
+      status, headers, body = @app.call(env)
+      reason = REASONS[status]
+      
+      self.send_data "HTTP/1.1 #{status} #{reason}\r\n"
+      headers.each_pair do |key, value|
+        self.send_data "#{key}: #{value}\r\n"
+      end
+      self.send_data "\r\n"
+      body.each do |chunck|
+        self.send_data chunck
+      end
+      if body.respond_to? :close
+        puts "body respond to close method"
+        body.close
+      else
+        puts "body can not respond to close method"
+      end
+      self.close_connection_after_writing
+    end
+  end
+  
   class Builder
     attr_reader :app
     def run(app)
@@ -124,4 +195,5 @@ app = Tube::Builder.parse_file("./config.ru")
 server = Tube.new(3000, app)
 puts "Plugging tube into port 3000"
 # server.start
-server.prefork 3
+# server.prefork 3
+server.start_eventmachine
