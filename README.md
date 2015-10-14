@@ -1,3 +1,3 @@
-a toy web server write in ruby
-just to learn some concept about concurrent
+a toy web server written in ruby
+just to learn some concepts about concurrency
 for fun :)
